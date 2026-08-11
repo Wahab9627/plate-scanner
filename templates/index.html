@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plate Scanner</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="wrap">
+
+    <div class="topbar">
+      <div class="brand"><span class="mark">◈</span> Scanner</div>
+      <div class="pill"><span class="dot"></span> System online</div>
+    </div>
+
+    <div class="hero-card">
+      <h1>Every plate,<br>read automatically.</h1>
+      <p class="subtitle">Upload footage below. The pipeline detects, crops, and reads every plate in the video — no manual review needed.</p>
+
+      <div class="stage-row">
+        <div class="stage s1"><span class="num">01</span> Upload</div>
+        <div class="stage s2"><span class="num">02</span> Detect</div>
+        <div class="stage s3"><span class="num">03</span> Read</div>
+      </div>
+
+      <div class="drop-zone" id="dropZone">
+        <div class="icon">⬆</div>
+        <div class="primary-text">Drop a video here</div>
+        <div class="secondary-text">or click to browse your files</div>
+        <input type="file" id="fileInput" accept="video/*" style="display:none">
+      </div>
+
+      <div id="fileName"></div>
+      <button id="uploadBtn" disabled>Start scan</button>
+      <div id="status"></div>
+    </div>
+  </div>
+
+  <script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileName = document.getElementById('fileName');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const statusDiv = document.getElementById('status');
+    let selectedFile = null;
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length) setFile(fileInput.files[0]);
+    });
+
+    function setFile(file) {
+      selectedFile = file;
+      fileName.textContent = `> ${file.name} ready`;
+      uploadBtn.disabled = false;
+    }
+
+    uploadBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+      uploadBtn.disabled = true;
+      statusDiv.innerHTML = '<p class="status-line">Uploading...</p>';
+
+      const formData = new FormData();
+      formData.append('video', selectedFile);
+
+      try {
+        const res = await fetch('/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) {
+          statusDiv.innerHTML = `<p class="error">${data.error || 'Upload failed'}</p>`;
+          uploadBtn.disabled = false;
+          return;
+        }
+        window.location.href = `/results/${data.job_id}`;
+      } catch (err) {
+        statusDiv.innerHTML = `<p class="error">${err}</p>`;
+        uploadBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

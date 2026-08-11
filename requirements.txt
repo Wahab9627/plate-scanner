@@ -1,0 +1,6 @@
+flask
+gunicorn
+inference-sdk
+easyocr
+opencv-python-headless
+imageio-ffmpeg

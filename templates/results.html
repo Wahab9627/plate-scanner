@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plate Scanner — Results</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="wrap">
+
+    <div class="topbar">
+      <div class="brand"><span class="mark">◈</span> Scanner</div>
+      <div class="pill"><span class="dot"></span> System online</div>
+    </div>
+
+    <div class="hero-card">
+      <h1 style="font-size: clamp(1.6rem, 3vw, 2.1rem);">Scanning your video</h1>
+      <p class="status-line" id="statusText">Initializing...</p>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+
+    <div id="resultsSection" style="display:none;">
+      <div class="panel" id="finalAnswerPanel" style="display:none;">
+        <h2>Final answer</h2>
+        <div id="finalAnswerBody"></div>
+      </div>
+
+      <div class="panel">
+        <h2>All detections</h2>
+        <div id="detectionsList"></div>
+      </div>
+
+      <div class="panel video-frame">
+        <video id="resultVideo" controls></video>
+      </div>
+
+      <a class="btn" id="csvLink" href="#">Download CSV log</a>
+    </div>
+  </div>
+
+  <script>
+    const jobId = "{{ job_id }}";
+    const statusText = document.getElementById('statusText');
+    const progressFill = document.getElementById('progressFill');
+    const resultsSection = document.getElementById('resultsSection');
+
+    function confBadgeClass(conf) {
+      return conf >= 0.7 ? 'conf-high' : 'conf-mid';
+    }
+
+    async function poll() {
+      try {
+        const res = await fetch(`/api/status/${jobId}`);
+        const job = await res.json();
+
+        if (job.status === 'error') {
+          statusText.innerHTML = `<span class="error">Failed: ${job.error}</span>`;
+          return;
+        }
+
+        if (job.status === 'queued' || job.status === 'processing') {
+          const p = job.progress || {};
+          if (p.total) {
+            const pct = Math.min(100, Math.round((p.current / p.total) * 100));
+            progressFill.style.width = pct + '%';
+            statusText.textContent = `Processing frame ${p.current} / ${p.total} — ${pct}%`;
+          } else {
+            statusText.textContent = 'Processing...';
+          }
+          setTimeout(poll, 2000);
+          return;
+        }
+
+        if (job.status === 'done') {
+          progressFill.style.width = '100%';
+          statusText.textContent = `Done — ${job.frame_count} frames in ${job.elapsed_sec}s`;
+          resultsSection.style.display = 'block';
+
+          const finalPanel = document.getElementById('finalAnswerPanel');
+          if (job.best_guess) {
+            finalPanel.style.display = 'block';
+            document.getElementById('finalAnswerBody').innerHTML = `
+              <div class="detection-row" style="background: rgba(52, 211, 153, 0.08);">
+                <span class="plate-text" style="font-size: 1.3rem;">${job.best_guess.plate_text}</span>
+                <span class="meta">
+                  <span class="badge time">seen ${job.best_guess.occurrences}×</span>
+                  <span class="badge ${confBadgeClass(job.best_guess.avg_confidence)}">${Math.round(job.best_guess.avg_confidence * 100)}% avg conf</span>
+                </span>
+              </div>`;
+          } else {
+            finalPanel.style.display = 'none';
+          }
+
+          const list = document.getElementById('detectionsList');
+          list.innerHTML = '';
+          if (job.detections.length === 0) {
+            list.innerHTML = '<div class="empty-state">No plates detected in this video.</div>';
+          }
+          job.detections.forEach(d => {
+            const row = document.createElement('div');
+            row.className = 'detection-row';
+            row.innerHTML = `
+              <span class="plate-text">${d.plate_text}</span>
+              <span class="meta">
+                <span class="badge time">${d.timestamp}s</span>
+                <span class="badge ${confBadgeClass(d.confidence)}">${Math.round(d.confidence * 100)}%</span>
+              </span>`;
+            list.appendChild(row);
+          });
+
+          document.getElementById('resultVideo').src = job.video_url;
+          document.getElementById('csvLink').href = job.csv_url;
+        }
+      } catch (err) {
+        statusText.innerHTML = `<span class="error">${err}</span>`;
+        setTimeout(poll, 3000);
+      }
+    }
+
+    poll();
+  </script>
+</body>
+</html>
